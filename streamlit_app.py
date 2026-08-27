@@ -48,6 +48,8 @@ if not all_cycles:
     st.stop()
 
 df = pd.DataFrame(all_cycles)
+total_episodes = df["task_id"].nunique()
+bad_episode_count = df.loc[df["bad_episode"], "task_id"].nunique()
 cycles = df[df["bad_episode"] == False].copy()  # noqa: E712
 
 # A cycle is correct when: sum == 15 -> recorded Success, OR sum != 15 -> recorded Failure.
@@ -59,13 +61,16 @@ cycles["flag"] = cycles["is_anomaly"].apply(lambda x: "⚠️" if x else "")
 
 # ---- top-line metrics ----
 total_cycles = len(cycles)
-exact_15 = (cycles["tablet_sum"] == TARGET_TABLETS).sum()
+success_count = int((cycles["recorded_result"] == "Success").sum())
+failure_count = int((cycles["recorded_result"] == "Failure").sum())
 anomaly_count = int(cycles["is_anomaly"].sum())
 
-m1, m2, m3 = st.columns(3)
-m1.metric("Total cycles", total_cycles)
-m2.metric(f"= {TARGET_TABLETS} tablets (success)", int(exact_15))
-m3.metric("⚠️ Anomalies", anomaly_count)
+m1, m2, m3, m4, m5 = st.columns(5)
+m1.metric("Episodes", total_episodes, delta=f"-{bad_episode_count} bad" if bad_episode_count else None, delta_color="inverse")
+m2.metric("Total cycles", total_cycles)
+m3.metric("Successes", success_count)
+m4.metric("Failures", failure_count)
+m5.metric("⚠️ Anomalies", anomaly_count)
 
 st.divider()
 
