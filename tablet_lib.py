@@ -41,11 +41,17 @@ def extract_cycles(task, project):
 
     episode_labelable = None
     episode_result = None
+    bad_reason = None
+    episode_notes = None
     for r in results:
         if r.get("from_name") == "episode_labelable":
             episode_labelable = r["value"]["choices"][0]
         elif r.get("from_name") == "episode_result":
             episode_result = r["value"]["choices"][0]
+        elif r.get("from_name") == "bad_reason":
+            bad_reason = ", ".join(r["value"]["choices"])
+        elif r.get("from_name") == "episode_notes":
+            episode_notes = "\n".join(r["value"].get("text") or [])
 
     phase_segs = []
     for r in results:
@@ -88,6 +94,8 @@ def extract_cycles(task, project):
             "tablet_sum": None,
             "recorded_result": None,
             "placement": None,
+            "bad_reason": bad_reason,
+            "episode_notes": episode_notes,
         }]
 
     cycles = []

@@ -49,7 +49,8 @@ if not all_cycles:
 
 df = pd.DataFrame(all_cycles)
 total_episodes = df["task_id"].nunique()
-bad_episode_count = df.loc[df["bad_episode"], "task_id"].nunique()
+bad_episodes = df[df["bad_episode"]].copy()
+bad_episode_count = bad_episodes["task_id"].nunique()
 cycles = df[df["bad_episode"] == False].copy()  # noqa: E712
 
 # A cycle is correct when: sum == 15 -> recorded Success, OR sum != 15 -> recorded Failure.
@@ -74,14 +75,20 @@ m5.metric("⚠️ Anomalies", anomaly_count)
 
 st.divider()
 
-# ---- filters ----
-projects = sorted(cycles["project"].unique())
+# ---- full detail: every episode / cycle row, nothing hidden ----
+st.subheader(f"Episode & cycle detail ({total_episodes} episodes, {total_cycles} cycles)")
+
+detail = pd.concat([cycles, bad_episodes], ignore_index=True, sort=False)
+detail = detail.sort_values(["project", "task_id", "cycle_index"]).reset_index(drop=True)
+detail["flag"] = detail["is_anomaly"].apply(lambda x: "⚠️" if x else ("🚫" if pd.isna(x) else ""))
+
+projects = sorted(df["project"].unique())
 f1, f2, f3 = st.columns(3)
 project_filter = f1.multiselect("Project", projects, default=projects)
-view_filter = f2.radio("Show", ["Only anomalies", "All"], index=0)
+view_filter = f2.radio("Show", ["All", "Only anomalies", "Only bad episodes"], index=0)
 task_filter = f3.text_input("Filter by task_id (optional)")
 
-view = cycles[cycles["project"].isin(project_filter)]
+view = detail[detail["project"].isin(project_filter)]
 if task_filter:
     try:
         tid = int(task_filter)
@@ -90,26 +97,31 @@ if task_filter:
         st.warning("task_id must be a number")
 
 if view_filter == "Only anomalies":
-    view = view[view["is_anomaly"]]
+    view = view[view["is_anomaly"] == True]  # noqa: E712
+elif view_filter == "Only bad episodes":
+    view = view[view["bad_episode"] == True]  # noqa: E712
 
 
 def highlight(row):
-    if row.get("is_anomaly"):
+    if row.get("bad_episode"):
         return ["background-color: #7a1f1f"] * len(row)
+    if row.get("is_anomaly"):
+        return ["background-color: #7a5a1f"] * len(row)
     return [""] * len(row)
 
 
 display_cols = [
-    "flag", "project", "task_id", "cycle_index", "start", "end",
-    "tablet_sum", "recorded_result", "placement",
+    "flag", "project", "task_id", "cycle_index", "bad_episode", "start", "end",
+    "tablet_sum", "recorded_result", "placement", "bad_reason", "episode_notes",
 ]
 st.dataframe(
     view[display_cols].reset_index(drop=True).style.apply(highlight, axis=1),
     width="stretch",
-    height=600,
+    height=700,
 )
 
 st.caption(
-    f"⚠️ rows are cycles where the rule broke: a {TARGET_TABLETS}-tablet cycle not recorded "
+    "Every episode is listed, bad ones included (red = bad episode). "
+    f"⚠️/orange rows are cycles where the rule broke: a {TARGET_TABLETS}-tablet cycle not recorded "
     "as Success, or a non-15 cycle not recorded as Failure."
 )
