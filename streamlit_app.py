@@ -104,9 +104,9 @@ elif view_filter == "Only bad episodes":
 
 def highlight(row):
     if row.get("bad_episode"):
-        return ["background-color: #7a1f1f"] * len(row)
+        return ["background-color: #ff4b4b; color: #ffffff"] * len(row)
     if row.get("is_anomaly"):
-        return ["background-color: #7a5a1f"] * len(row)
+        return ["background-color: #ffb400; color: #000000"] * len(row)
     return [""] * len(row)
 
 
