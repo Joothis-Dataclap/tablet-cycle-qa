@@ -7,8 +7,12 @@ each task has annotations[].result[] entries keyed by from_name
 episode_labelable, cycle_mode, episode_result, ...).
 
 A cycle runs from "Pick up the bag" to "Place the bag" and is expected to end
-with exactly TARGET_TABLETS tablets in the bag (tablets_count summed, signed
+with exactly the product's tablet count in the bag (tablets_count summed, signed
 by tablet_direction: "Going in" = +count, "Coming out" = -count).
+
+Cycle extraction here is count-agnostic; the Streamlit app passes a per-product
+target (SV Packs 15, Tubes 6, Goli Jars 24, BBW Jars 6). TARGET_TABLETS below is
+only the default used by the analyze_tablets.py CLI helper.
 """
 
 TARGET_TABLETS = 15
@@ -124,6 +128,8 @@ def extract_cycles(task, project):
                 "tablet_sum": tablet_sum,
                 "recorded_result": recorded,
                 "placement": placement_by_id.get(seg["id"]),
+                "bad_reason": bad_reason,
+                "episode_notes": episode_notes,
             })
             cycle_idx += 1
             current_tablets = []
@@ -141,6 +147,8 @@ def extract_cycles(task, project):
             "tablet_sum": sum(current_tablets),
             "recorded_result": None,
             "placement": None,
+            "bad_reason": bad_reason,
+            "episode_notes": episode_notes,
         })
 
     if not cycles:
@@ -153,6 +161,8 @@ def extract_cycles(task, project):
             "tablet_sum": 0,
             "recorded_result": episode_result,
             "placement": None,
+            "bad_reason": bad_reason,
+            "episode_notes": episode_notes,
         })
 
     return cycles
