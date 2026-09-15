@@ -2,7 +2,7 @@
 Shared Streamlit page for tablet-count cycle review.
 
 Every product type (SV Packs, Tubes, Goli Jars, BBW Jars) uses the exact same
-UI; only the page title and the expected tablet count per cycle differ, so each
+UI; the page title, export parser and expected count per cycle differ, so each
 page script is a one-line call into render_review_page().
 """
 import json
@@ -10,24 +10,24 @@ import json
 import pandas as pd
 import streamlit as st
 
-from tablet_lib import process_tasks
+from tablet_lib import PRODUCTS, process_tasks
 
 
-def render_review_page(title, target):
+def render_review_page(title, product):
     """Render the full review page for one product type.
 
     title: product name shown in the page heading / sidebar nav.
-    target: tablet count a cycle must end on to be a success.
+    product: key into tablet_lib.PRODUCTS (picks the parser and target count).
 
     set_page_config / sidebar branding live in streamlit_app.py, which routes to
     these pages with st.navigation.
     """
+    target = PRODUCTS[product]["target"]
     st.title(f"{title} — tablet-count cycle review")
     st.caption(
-        "Upload one or more Label Studio export JSON files. Each cycle runs from "
-        "'Pick up the bag' to 'Place the bag'; it's a **success** only if exactly "
-        f"{target} tablets ended up in the bag (tablets_count summed, "
-        "'Going in' = +1/+2, 'Coming out' = -1/-2)."
+        f"Upload one or more {title} Label Studio export JSON files. A cycle is a "
+        f"**success** only if it ends with exactly {target} tablets packed "
+        "(items going in counted +, coming out counted -); anything else is a failure."
     )
 
     uploaded_files = st.file_uploader(
@@ -54,7 +54,7 @@ def render_review_page(title, target):
             errors.append(f"{uf.name}: expected a list of tasks, got {type(data).__name__}")
             continue
         try:
-            all_cycles.extend(process_tasks(data, project))
+            all_cycles.extend(process_tasks(data, project, product))
         except Exception as e:
             errors.append(f"{uf.name}: failed while processing ({e})")
 
@@ -97,7 +97,7 @@ def render_review_page(title, target):
     st.subheader(f"Episode & cycle detail ({total_episodes} episodes, {total_cycles} cycles)")
 
     detail = pd.concat([cycles, bad_episodes], ignore_index=True, sort=False)
-    detail = detail.sort_values(["project", "task_id", "cycle_index"]).reset_index(drop=True)
+    detail = detail.sort_values(["project", "task_id", "arm", "cycle_index"], na_position="first").reset_index(drop=True)
     # isna first: is_anomaly is NaN on bad-episode rows, and NaN is truthy.
     detail["flag"] = detail["is_anomaly"].apply(lambda x: "🚫" if pd.isna(x) else ("⚠️" if x else ""))
 
@@ -121,21 +121,26 @@ def render_review_page(title, target):
         view = view[view["bad_episode"] == True]  # noqa: E712
 
     display_cols = [
-        "flag", "project", "task_id", "cycle_index", "bad_episode", "start", "end",
-        "tablet_sum", "recorded_result", "placement", "bad_reason", "episode_notes",
+        "flag", "project", "task_id", "arm", "cycle_index", "bad_episode", "start", "end",
+        "tablet_sum", "expected_result", "recorded_result", "placement", "failures",
+        "bad_reason", "episode_notes",
     ]
+    # arm only exists for BBW (two arms); failures only for Goli Jars
+    display_cols = [c for c in display_cols if c not in ("arm", "failures") or view[c].notna().any()]
     # reindex (not view[display_cols]): an export missing an optional field entirely
     # would otherwise raise KeyError instead of showing a blank column.
     table = view.reindex(columns=display_cols).reset_index(drop=True)
     # is_anomaly isn't a displayed column, so the row styler reads the flags from here,
     # aligned to table by position.
-    flags = view.reset_index(drop=True).reindex(columns=["bad_episode", "is_anomaly"])
+    flags = view.reset_index(drop=True).reindex(columns=["bad_episode", "is_anomaly", "recorded_result"])
 
     def highlight(row):
         if flags.at[row.name, "bad_episode"] == True:  # noqa: E712
             return ["background-color: #ff4b4b; color: #ffffff"] * len(row)
         if flags.at[row.name, "is_anomaly"] == True:  # noqa: E712  (NaN for bad episodes)
             return ["background-color: #ffb400; color: #000000"] * len(row)
+        if flags.at[row.name, "recorded_result"] == "Failure":
+            return ["background-color: #fff176; color: #000000"] * len(row)
         return [""] * len(row)
 
     st.dataframe(
@@ -145,7 +150,7 @@ def render_review_page(title, target):
     )
 
     st.caption(
-        "Every episode is listed, bad ones included (red = bad episode). "
+        "Every episode is listed, bad ones included (red = bad episode, yellow = failure cycle). "
         f"⚠️/orange rows are cycles where the rule broke: a {target}-tablet cycle not recorded "
         f"as Success, or a cycle that isn't {target} tablets not recorded as Failure."
     )
